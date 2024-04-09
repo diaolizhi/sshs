@@ -191,6 +191,7 @@ func selectServer() {
 	selectedServer = nil
 	shouldRenderMain = true
 	filteredServers = servers
+	serverIndex = 0
 
 	g, err := gocui.NewGui(gocui.OutputNormal, false)
 	if err != nil {
@@ -232,6 +233,10 @@ func initKeybindings(g *gocui.Gui) error {
 	}
 
 	if err := g.SetKeybinding("main", gocui.KeyEnter, gocui.ModNone, selected); err != nil {
+		return err
+	}
+
+	if err := g.SetKeybinding("main", 'q', gocui.ModNone, quit); err != nil {
 		return err
 	}
 

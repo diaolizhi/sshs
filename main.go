@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	selectedServer *Server
-	serverIndex    = 0
-	servers        []Server
+	servers          []Server
+	filteredServers  []Server
+	serverIndex      = 0
+	selectedServer   *Server
+	shouldRenderMain = true
 )
 
 // Server 表示配置信息的结构体
@@ -76,6 +78,7 @@ func readServers(filePath string) error {
 		}
 		servers = append(servers, *config)
 	}
+	filteredServers = servers
 
 	if err := scanner.Err(); err != nil {
 		return err
@@ -93,36 +96,50 @@ func layout(g *gocui.Gui) error {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
+	}
+
+	if shouldRenderMain {
 		main.Title = " Servers "
 		main.Wrap = true
 		main.Highlight = true
 		main.SelBgColor = gocui.ColorRed
 		main.SelFgColor = gocui.ColorWhite
+		main.Clear()
 
-		if i == 0 {
-			for index, server := range servers {
-				if index+1 < 10 {
-					fmt.Fprintf(main, "  %d: %s \n", index+1, server.Note)
-				} else {
-					fmt.Fprintf(main, " %d: %s \n", index+1, server.Note)
-				}
+		for index, server := range filteredServers {
+			if index+1 < 10 {
+				fmt.Fprintf(main, "  %d: %s \n", index+1, server.Note)
+			} else {
+				fmt.Fprintf(main, " %d: %s \n", index+1, server.Note)
 			}
 		}
+
+		shouldRenderMain = false
 	}
 
-	detail, err := g.SetView("detail", 0, maxY-9, maxX-31, maxY-1, 0)
+	if v, err := g.SetView("filter", 0, maxY-2, maxX-1, maxY-0, 0); err != nil {
+		if err != nil && err != gocui.ErrUnknownView {
+			return err
+		}
+		v.Editable = true
+		v.Frame = false
+	}
+
+	detail, err := g.SetView("detail", 0, maxY-9, maxX/2-1, maxY-3, 0)
 	if err != nil && err != gocui.ErrUnknownView {
 		return err
 	}
 
 	detail.Clear()
 	detail.Title = " Connection Details "
-	fmt.Fprintln(detail, " ")
-	fmt.Fprintf(detail, " IP       : %s\n", servers[i].IP)
-	fmt.Fprintf(detail, " Username : %s\n", servers[i].Username)
-	fmt.Fprintf(detail, " Port     : %s\n", servers[i].Port)
+	if len(filteredServers) > 0 {
+		fmt.Fprintln(detail, " ")
+		fmt.Fprintf(detail, " IP       : %s\n", filteredServers[i].IP)
+		fmt.Fprintf(detail, " Username : %s\n", filteredServers[i].Username)
+		fmt.Fprintf(detail, " Port     : %s\n", filteredServers[i].Port)
+	}
 
-	help, err := g.SetView("help", maxX-30, maxY-9, maxX-1, maxY-1, 0)
+	help, err := g.SetView("help", maxX/2+1, maxY-9, maxX-1, maxY-3, 0)
 	if err != nil && err != gocui.ErrUnknownView {
 		return err
 	}
@@ -130,13 +147,9 @@ func layout(g *gocui.Gui) error {
 	help.Clear()
 	help.Title = " Keybindings "
 	fmt.Fprintln(help, " ")
-	fmt.Fprintln(help, "    ↑ ↓: Select")
-	fmt.Fprintln(help, "     ↵ : Connect")
+	fmt.Fprintln(help, "    ↑ ↓: Select     ↵ : Connect")
+	fmt.Fprintln(help, "      /: Filter    Esc: Clear Filter")
 	fmt.Fprintln(help, "     ^C: Exit")
-
-	if _, err := g.SetCurrentView("main"); err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -179,6 +192,11 @@ func selectServer() {
 
 	g.SetManagerFunc(layout)
 
+	g.Update(func(g *gocui.Gui) error {
+		_, err := g.SetCurrentView("main")
+		return err
+	})
+
 	if err := initKeybindings(g); err != nil {
 		log.Panicln(err)
 	}
@@ -193,7 +211,19 @@ func initKeybindings(g *gocui.Gui) error {
 		return err
 	}
 
-	if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, selected); err != nil {
+	if err := g.SetKeybinding("", '/', gocui.ModNone, activeFilter); err != nil {
+		return err
+	}
+
+	if err := g.SetKeybinding("", gocui.KeyEsc, gocui.ModNone, resetServers); err != nil {
+		return err
+	}
+
+	if err := g.SetKeybinding("filter", gocui.KeyEnter, gocui.ModNone, filterServers); err != nil {
+		return err
+	}
+
+	if err := g.SetKeybinding("main", gocui.KeyEnter, gocui.ModNone, selected); err != nil {
 		return err
 	}
 
@@ -208,18 +238,62 @@ func initKeybindings(g *gocui.Gui) error {
 	return nil
 }
 
+func resetServers(g *gocui.Gui, v *gocui.View) error {
+	serverIndex = 0
+	filteredServers = servers
+	shouldRenderMain = true
+	g.SetCurrentView("main")
+	inputV, _ := g.View("filter")
+	inputV.Clear()
+
+	return nil
+}
+
+func activeFilter(g *gocui.Gui, v *gocui.View) error {
+	v, err := g.SetCurrentView("filter")
+	if err != nil {
+		return err
+	}
+
+	v.Clear()
+	fmt.Fprint(v, ">")
+	v.SetCursor(1, 0)
+	return nil
+}
+
+func filterServers(g *gocui.Gui, v *gocui.View) error {
+	g.SetCurrentView("main")
+	serverIndex = 0
+
+	line, _ := v.Line(0)
+	if line[0] == '>' {
+		line = line[1:]
+	}
+
+	filteredServers = []Server{}
+	for _, server := range servers {
+		if strings.Contains(server.Note, line) {
+			filteredServers = append(filteredServers, server)
+		}
+	}
+	shouldRenderMain = true
+
+	v.Clear()
+	return nil
+}
+
 func quit(g *gocui.Gui, v *gocui.View) error {
 	return gocui.ErrQuit
 }
 
 func selected(g *gocui.Gui, v *gocui.View) error {
-	selectedServer = &servers[serverIndex]
+	selectedServer = &filteredServers[serverIndex]
 	return gocui.ErrQuit
 }
 
 func scrollUp(g *gocui.Gui, v *gocui.View) error {
 	if serverIndex == 0 {
-		serverIndex = len(servers) - 1
+		serverIndex = len(filteredServers) - 1
 	} else {
 		serverIndex -= 1
 	}
@@ -227,12 +301,12 @@ func scrollUp(g *gocui.Gui, v *gocui.View) error {
 	_, sY := v.Size()
 
 	// 选择最后一行时：视图的窗口移动到末尾
-	if serverIndex == len(servers)-1 {
-		if len(servers) > sY {
-			v.SetOrigin(0, len(servers)-sY+1)
+	if serverIndex == len(filteredServers)-1 {
+		if len(filteredServers) > sY {
+			v.SetOrigin(0, len(filteredServers)-sY+1)
 			v.SetCursor(0, sY-1)
 		} else {
-			v.SetCursor(0, len(servers)-1)
+			v.SetCursor(0, len(filteredServers)-1)
 		}
 		return nil
 	}
@@ -250,7 +324,7 @@ func scrollUp(g *gocui.Gui, v *gocui.View) error {
 }
 
 func scrollDown(g *gocui.Gui, v *gocui.View) error {
-	if serverIndex >= len(servers)-1 {
+	if serverIndex >= len(filteredServers)-1 {
 		serverIndex = 0
 	} else {
 		serverIndex += 1

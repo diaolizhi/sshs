@@ -280,7 +280,7 @@ func filterServers(g *gocui.Gui, v *gocui.View) error {
 
 	filteredServers = []Server{}
 	for _, server := range servers {
-		if strings.Contains(server.Note, line) {
+		if strings.Contains(strings.ToLower(server.Note), strings.ToLower(line)) {
 			filteredServers = append(filteredServers, server)
 		}
 	}

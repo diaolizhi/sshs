@@ -147,9 +147,9 @@ func layout(g *gocui.Gui) error {
 	help.Clear()
 	help.Title = " Keybindings "
 	fmt.Fprintln(help, " ")
-	fmt.Fprintln(help, "    ↑ ↓: Select     ↵ : Connect")
-	fmt.Fprintln(help, "      /: Filter    Esc: Clear Filter")
-	fmt.Fprintln(help, "     ^C: Exit")
+	fmt.Fprintln(help, " ↑/p ↓/n: Select     ↵ : Connect")
+	fmt.Fprintln(help, "       /: Filter    Esc: Clear Filter")
+	fmt.Fprintln(help, "      ^C: Exit")
 
 	return nil
 }
@@ -237,6 +237,14 @@ func initKeybindings(g *gocui.Gui) error {
 	}
 
 	if err := g.SetKeybinding("main", 'q', gocui.ModNone, quit); err != nil {
+		return err
+	}
+
+	if err := g.SetKeybinding("main", 'p', gocui.ModNone, scrollUp); err != nil {
+		return err
+	}
+
+	if err := g.SetKeybinding("main", 'n', gocui.ModNone, scrollDown); err != nil {
 		return err
 	}
 

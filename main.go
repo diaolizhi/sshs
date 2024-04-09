@@ -167,7 +167,10 @@ func main() {
 
 	selectServer()
 
-	connectServer()
+	for selectedServer != nil {
+		connectServer()
+		selectServer()
+	}
 }
 
 func connectServer() {
@@ -184,6 +187,11 @@ func connectServer() {
 }
 
 func selectServer() {
+	// 初始化
+	selectedServer = nil
+	shouldRenderMain = true
+	filteredServers = servers
+
 	g, err := gocui.NewGui(gocui.OutputNormal, false)
 	if err != nil {
 		log.Panicln(err)

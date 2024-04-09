@@ -25,6 +25,7 @@ type Server struct {
 	IP       string
 	Port     string
 	Note     string
+	KeyPath  string
 }
 
 // parseLine 解析单行配置
@@ -36,7 +37,7 @@ func parseLine(line string) (*Server, error) {
 	}
 	username := parts[0]
 
-	// 分割 IP:端口 和备注
+	// 分割 IP:端口、备注、密钥路径
 	ipPortNote := strings.Split(parts[1], "#")
 	if len(ipPortNote) < 2 {
 		return nil, fmt.Errorf("invalid format")
@@ -44,19 +45,25 @@ func parseLine(line string) (*Server, error) {
 	ipPort := ipPortNote[0]
 	note := ipPortNote[1]
 
+	keyPath := ""
+	if len(ipPortNote) == 3 {
+		keyPath = ipPortNote[2]
+	}
+
 	// 分割 IP 和端口
 	ipPortParts := strings.Split(ipPort, ":")
-	if len(ipPortParts) != 2 {
-		return nil, fmt.Errorf("invalid format")
-	}
 	ip := ipPortParts[0]
-	port := ipPortParts[1]
+	port := "22"
+	if len(ipPortParts) == 2 {
+		port = ipPortParts[1]
+	}
 
 	return &Server{
 		Username: username,
 		IP:       ip,
 		Port:     port,
 		Note:     note,
+		KeyPath:  keyPath,
 	}, nil
 }
 
@@ -137,6 +144,9 @@ func layout(g *gocui.Gui) error {
 		fmt.Fprintf(detail, " IP       : %s\n", filteredServers[i].IP)
 		fmt.Fprintf(detail, " Username : %s\n", filteredServers[i].Username)
 		fmt.Fprintf(detail, " Port     : %s\n", filteredServers[i].Port)
+		if filteredServers[i].KeyPath != "" {
+			fmt.Fprintf(detail, " KeyPath  : %s\n", filteredServers[i].KeyPath)
+		}
 	}
 
 	help, err := g.SetView("help", maxX/2+1, maxY-9, maxX-1, maxY-3, 0)
@@ -178,7 +188,18 @@ func connectServer() {
 		return
 	}
 
-	cmd := exec.Command("ssh", fmt.Sprintf("%s@%s", selectedServer.Username, selectedServer.IP), "-p", selectedServer.Port)
+	args := []string{
+		fmt.Sprintf("%s@%s", selectedServer.Username, selectedServer.IP),
+		"-p",
+		selectedServer.Port,
+	}
+
+	if selectedServer.KeyPath != "" {
+		args = append(args, "-i", selectedServer.KeyPath)
+		args = append(args, "-o", "IdentitiesOnly=yes")
+	}
+
+	cmd := exec.Command("ssh", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
